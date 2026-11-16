@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DvbHeadend</title>
+<link rel="icon" type="image/svg+xml" href="/icon-small.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#1b2028">
 <style>
   :root {
     --bg:#12151a; --panel:#1b2028; --line:#2a313c; --text:#e6e9ee; --dim:#8b95a5; --accent:#4da3ff;
@@ -15,7 +20,7 @@
   * { box-sizing: border-box; }
   body { margin:0; font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
   header.top { display:flex; align-items:center; gap:24px; padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
-  header h1 { font-size:16px; margin:0; letter-spacing:.3px; }
+  header h1 { font-size:16px; margin:0; letter-spacing:.3px; display:flex; align-items:center; gap:10px; }
   nav { display:flex; gap:4px; }
   nav button { background:none; border:0; color:var(--dim); padding:6px 12px; border-radius:6px; cursor:pointer; font:inherit; }
   nav button.active { background:var(--line); color:var(--text); }
@@ -105,7 +110,7 @@
 </head>
 <body>
 <header class="top">
-  <h1>DvbHeadend</h1>
+  <h1><img src="/icon-small.svg" alt="" width="24" height="24">DvbHeadend</h1>
   <nav>
     <button data-tab="channels" class="active">Channels</button>
     <button data-tab="recordings">Recordings</button>

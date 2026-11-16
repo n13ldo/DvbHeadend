@@ -108,6 +108,12 @@ equal-priority request gets HTTP 503.
 - **No auto-discovery**: clients are pointed at the address by hand.
 - DVB-T and DVB-T2 only (no satellite or cable), free-to-air only.
 
+## Icon
+
+`wwwroot/icon.svg` is the app icon: an aerial whose elements taper into a play arrow.
+`icon-small.svg` is a three-bar version for 16 to 32 pixel uses such as the browser tab.
+The PNG and ICO files beside them are rendered from those two with `rsvg-convert`.
+
 ## Third-party data
 
 `src/DvbHeadend/Ts/freesat_huffman.bin` holds the Freeview HD / Freesat Huffman code tables,

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="DvbHeadend">
+  <rect width="512" height="512" rx="112" fill="#1b1838"/>
+  <g fill="none" stroke-linecap="round" stroke-width="24">
+    <line x1="236" y1="236" x2="236" y2="412" stroke="#f4f2ff"/>
+    <line x1="116" y1="236" x2="400" y2="236" stroke="#f4f2ff"/>
+    <line x1="128" y1="112" x2="128" y2="360" stroke="#ffc53d"/>
+    <line x1="200" y1="140" x2="200" y2="332" stroke="#ff7a59"/>
+    <line x1="272" y1="166" x2="272" y2="306" stroke="#f0528c"/>
+    <line x1="336" y1="188" x2="336" y2="284" stroke="#9b7bff"/>
+    <line x1="392" y1="208" x2="392" y2="264" stroke="#3fa9ff"/>
+  </g>
+</svg>
