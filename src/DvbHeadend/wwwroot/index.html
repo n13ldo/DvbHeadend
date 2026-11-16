@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DvbHeadend</title>
+<style>
+  :root {
+    --bg:#12151a; --panel:#1b2028; --line:#2a313c; --text:#e6e9ee; --dim:#8b95a5; --accent:#4da3ff;
+    --ok:#3ecf8e; --bad:#ff6b6b; --warn:#f5b942;
+    /* chart tokens (validated against --panel) */
+    --series:#3987e5; --grid:#2a313c; --axis:#3a4250; --critical:#d03b3b; --status-warn:#fab219;
+    --colw:270px; --rowh:52px;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
+  header.top { display:flex; align-items:center; gap:24px; padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  header h1 { font-size:16px; margin:0; letter-spacing:.3px; }
+  nav { display:flex; gap:4px; }
+  nav button { background:none; border:0; color:var(--dim); padding:6px 12px; border-radius:6px; cursor:pointer; font:inherit; }
+  nav button.active { background:var(--line); color:var(--text); }
+  #summary { margin-left:auto; color:var(--dim); font-size:12px; }
+  main { padding:20px; max-width:1200px; margin:0 auto; }
+  main.wide { max-width:none; }
+  section { display:none; } section.active { display:block; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; color:var(--dim); font-weight:500; font-size:12px; padding:6px 10px; border-bottom:1px solid var(--line); }
+  td { padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  tr.off td { opacity:.45; }
+  .num { color:var(--dim); width:48px; font-variant-numeric:tabular-nums; }
+  .tag { display:inline-block; font-size:10px; padding:1px 6px; border-radius:4px; border:1px solid var(--line); color:var(--dim); margin-left:6px; vertical-align:middle; }
+  .dim { color:var(--dim); } .small { font-size:12px; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { color:var(--warn); }
+  button.act, a.act { background:var(--line); border:0; color:var(--text); padding:4px 10px; border-radius:5px; cursor:pointer; font:inherit; font-size:12px; text-decoration:none; display:inline-block; }
+  button.act:hover, a.act:hover { background:var(--accent); color:#04121f; }
+  button.primary { background:var(--accent); color:#04121f; font-weight:600; }
+  button.star { background:none; border:0; cursor:pointer; font-size:16px; line-height:1; color:var(--axis); padding:2px 4px; }
+  button.star.on { color:var(--warn); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-bottom:20px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .card h3 { margin:0 0 8px; font-size:14px; }
+  .kv { display:grid; grid-template-columns:120px 1fr; gap:2px 10px; font-size:13px; }
+  .kv div:nth-child(odd) { color:var(--dim); }
+  .bar { height:4px; background:var(--line); border-radius:2px; margin-top:6px; overflow:hidden; }
+  .bar i { display:block; height:100%; background:var(--accent); }
+  input, select { background:var(--bg); border:1px solid var(--line); color:var(--text); padding:5px 8px; border-radius:5px; font:inherit; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .seg button { background:none; border:0; border-right:1px solid var(--line); color:var(--dim); padding:5px 12px; cursor:pointer; font:inherit; }
+  .seg button:last-child { border-right:0; }
+  .seg button.active { background:var(--line); color:var(--text); }
+  pre { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; white-space:pre-wrap; font-size:12px; }
+  code { background:var(--panel); padding:1px 5px; border-radius:4px; font-size:12px; }
+  dialog { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; width:min(720px, 92vw); max-height:80vh; padding:0; }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  dialog header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  dialog .body { padding:12px 16px 16px; overflow:auto; max-height:65vh; }
+  .form { display:grid; grid-template-columns:110px 1fr; gap:10px 12px; align-items:center; }
+
+  /* channel identity */
+  .chan { display:flex; align-items:center; gap:10px; min-width:0; }
+  .logo { width:44px; height:32px; flex:none; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; letter-spacing:.3px; color:#fff; overflow:hidden; }
+  .logo img { max-width:100%; max-height:100%; object-fit:contain; }
+  .logo.has { background:#0d1014; }
+  .chan .name { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* grid guide */
+  #gridWrap { border:1px solid var(--line); border-radius:10px; overflow:auto; max-height:calc(100vh - 170px); background:var(--panel); }
+  #gridInner { position:relative; }
+  .ruler { position:sticky; top:0; z-index:5; height:30px; background:var(--panel); border-bottom:1px solid var(--line); }
+  .ruler .corner { position:sticky; left:0; z-index:6; width:var(--colw); height:29px; background:var(--panel); border-right:1px solid var(--line); padding:6px 10px; font-size:12px; color:var(--dim); float:left; }
+  .ruler .tick { position:absolute; top:0; height:29px; border-left:1px solid var(--line); padding:6px 6px; font-size:12px; color:var(--dim); white-space:nowrap; }
+  .ruler .tick.day { color:var(--text); font-weight:600; }
+  .grow { display:flex; height:var(--rowh); border-bottom:1px solid var(--line); }
+  .grow.off { opacity:.45; }
+  .gch { position:sticky; left:0; z-index:3; width:var(--colw); flex:none; background:var(--panel); border-right:1px solid var(--line); padding:0 6px 0 4px; display:flex; align-items:center; gap:4px; }
+  .gch .num { width:30px; text-align:right; font-size:12px; }
+  .gline { position:relative; flex:none; }
+  .ev { position:absolute; top:4px; bottom:4px; background:#232a35; border-radius:5px; padding:4px 8px; overflow:hidden; cursor:pointer; border:0; color:var(--text); font:inherit; text-align:left; }
+  .ev:hover, .ev:focus-visible { background:#2e3948; outline:none; }
+  .ev.live { background:#1f3a5c; }
+  .ev.live:hover, .ev.live:focus-visible { background:#27497a; }
+  .ev.past { opacity:.5; }
+  .ev b { display:block; font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ev span { display:block; font-size:11px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .nowline { position:absolute; top:0; bottom:0; width:2px; background:var(--bad); z-index:2; pointer-events:none; }
+  .empty { position:absolute; left:8px; top:16px; font-size:12px; color:var(--axis); }
+
+  /* signal charts */
+  .sig { display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:16px; }
+  .sig .head { display:flex; align-items:baseline; gap:10px; }
+  .sig .head h3 { margin:0; font-size:14px; }
+  .sig .stat { font-size:22px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .sig .meta { font-size:12px; color:var(--dim); display:flex; gap:12px; flex-wrap:wrap; margin:2px 0 6px; }
+  .sig .errs { color:var(--text); }
+  .sig .errs i { font-style:normal; color:var(--critical); margin-right:4px; }
+  .chart { position:relative; }
+  .chart svg { display:block; width:100%; height:auto; outline:none; }
+  .chart svg:focus-visible { outline:1px solid var(--accent); border-radius:4px; }
+  .chart text { fill:var(--dim); font-size:10px; }
+  .tip { position:absolute; pointer-events:none; background:#0d1014; border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:12px; white-space:nowrap; display:none; z-index:4; }
+  .tip b { font-size:13px; }
+  .tip div { color:var(--dim); }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>DvbHeadend</h1>
+  <nav>
+    <button data-tab="channels" class="active">Channels</button>
+    <button data-tab="recordings">Recordings</button>
+    <button data-tab="tuners">Tuners</button>
+    <button data-tab="setup">Setup</button>
+  </nav>
+  <div id="summary"></div>
+</header>
+<main id="main">
+  <section id="channels" class="active">
+    <div class="row">
+      <span class="seg" id="viewToggle" title="Layout">
+        <button data-view="list">List</button><button data-view="grid">Grid</button>
+      </span>
+      <input id="filter" placeholder="Filter channels…" size="22">
+      <span class="seg" id="kindFilter">
+        <button data-kind="all">All</button><button data-kind="fav">★ Favourites</button><button data-kind="hd">HD</button><button data-kind="sd">SD</button><button data-kind="radio">Radio</button>
+      </span>
+      <span class="dim small" id="shownCount"></span>
+      <span id="gridNav" class="row" style="margin:0; display:none">
+        <select id="gridDay"></select>
+        <button class="act" id="gridPrev" title="Earlier">◀</button>
+        <button class="act" id="gridNow">Now</button>
+        <button class="act" id="gridNext" title="Later">▶</button>
+      </span>
+      <label class="dim small"><input type="checkbox" id="showAll"> hidden</label>
+      <span class="dim small" style="margin-left:auto"><a class="act" href="/playlist.m3u">playlist.m3u</a> <a class="act" href="/xmltv.xml">xmltv.xml</a></span>
+    </div>
+
+    <div id="listView">
+      <table>
+        <thead><tr><th>No.</th><th>Channel</th><th>Now</th><th>Next</th><th></th></tr></thead>
+        <tbody id="channelRows"></tbody>
+      </table>
+    </div>
+    <div id="gridView" style="display:none">
+      <div id="gridWrap"><div id="gridInner"></div></div>
+    </div>
+    <p id="noChannels" class="dim" style="display:none">No channels yet. Go to <b>Setup</b> and run a scan.</p>
+  </section>
+
+  <section id="recordings">
+    <table>
+      <thead><tr><th>When</th><th>Title</th><th>Channel</th><th>Status</th><th></th></tr></thead>
+      <tbody id="recordingRows"></tbody>
+    </table>
+    <p id="noRecordings" class="dim" style="display:none">Nothing scheduled.</p>
+  </section>
+
+  <section id="tuners">
+    <div class="cards" id="tunerCards"></div>
+    <div class="row">
+      <h3 style="margin:0">Signal history</h3>
+      <span class="seg" id="sigRange"><button data-hours="6">6 h</button><button data-hours="24">24 h</button><button data-hours="48">48 h</button></span>
+      <span class="dim small" id="sigNote"></span>
+    </div>
+    <div class="sig" id="sigCards"></div>
+    <details style="margin-top:16px">
+      <summary class="dim small" style="cursor:pointer">Show as a table</summary>
+      <table style="margin-top:8px">
+        <thead><tr><th>Mux</th><th>Readings</th><th id="sigUnitHead">SNR min</th><th>avg</th><th>max</th><th>Latest strength</th><th>Errors</th></tr></thead>
+        <tbody id="sigTable"></tbody>
+      </table>
+    </details>
+  </section>
+
+  <section id="setup">
+    <div class="cards">
+      <div class="card">
+        <h3>Channel scan</h3>
+        <p class="dim small">Tunes every mux below and rebuilds the channel list, using the broadcaster's channel numbers. Your renames, favourites, logos and hidden channels are kept.</p>
+        <button class="act primary" id="scanBtn">Scan now</button>
+        <p class="dim small" id="scanInfo"></p>
+        <pre id="scanLog" style="display:none"></pre>
+      </div>
+      <div class="card">
+        <h3>Channel logos</h3>
+        <p class="dim small">Logos are yours to supply. Pick several image files at once: a file named after the channel number (<code>1.png</code>) or the channel name (<code>BBC ONE Scot.png</code>) is matched automatically. One logo at a time can also be set from a channel's Edit button. PNG, JPEG, WebP or GIF, up to 2 MB each.</p>
+        <input type="file" id="logoFiles" multiple accept="image/png,image/jpeg,image/webp,image/gif">
+        <pre id="logoResult" style="display:none"></pre>
+      </div>
+      <div class="card">
+        <h3>Connecting clients</h3>
+        <div class="small">
+          <p><b>Jellyfin / Plex / Emby:</b> add an <i>HDHomeRun</i> tuner at <code class="base"></code></p>
+          <p><b>Guide (XMLTV):</b> <code class="base" data-suffix="/xmltv.xml"></code></p>
+          <p><b>VLC / Kodi:</b> <code class="base" data-suffix="/playlist.m3u"></code></p>
+          <p><b>Favourites only:</b> <code class="base" data-suffix="/playlist.m3u?favourites=true"></code></p>
+        </div>
+      </div>
+    </div>
+    <h3>Muxes</h3>
+    <table>
+      <thead><tr><th>Name</th><th>Frequency</th><th>System</th><th>PLP</th><th>Services</th><th></th></tr></thead>
+      <tbody id="muxRows"></tbody>
+    </table>
+    <div class="row" style="margin-top:12px">
+      <input id="muxName" placeholder="Name" size="18">
+      <input id="muxFreq" placeholder="Frequency MHz" size="14">
+      <select id="muxSys"><option>DVBT</option><option>DVBT2</option></select>
+      <input id="muxPlp" placeholder="PLP (T2)" size="8">
+      <button class="act" id="muxAdd">Add mux</button>
+    </div>
+  </section>
+</main>
+
+<dialog id="guide">
+  <header><h1 id="guideTitle"></h1><button class="act" onclick="guide.close()">Close</button></header>
+  <div class="body"><table><tbody id="guideRows"></tbody></table></div>
+</dialog>
+
+<dialog id="prog">
+  <header><h1 id="progTitle"></h1><button class="act" onclick="prog.close()">Close</button></header>
+  <div class="body">
+    <p class="dim" id="progWhen" style="margin-top:0"></p>
+    <p id="progDesc"></p>
+    <div class="row" style="margin:0" id="progActions"></div>
+  </div>
+</dialog>
+
+<dialog id="edit">
+  <header><h1 id="editTitle">Edit channel</h1><button class="act" onclick="edit.close()">Close</button></header>
+  <div class="body">
+    <div class="form">
+      <label for="editName">Name</label><input id="editName">
+      <label for="editNumber">Number</label><input id="editNumber" type="number" min="1" style="width:110px">
+      <label for="editEnabled">Visible</label><span><input type="checkbox" id="editEnabled"> <span class="dim small">hidden channels are left out of playlists and clients</span></span>
+      <label for="editFav">Favourite</label><span><input type="checkbox" id="editFav"></span>
+      <label for="editLogo">Logo</label><span class="row" style="margin:0"><span id="editLogoNow"></span><input type="file" id="editLogo" accept="image/png,image/jpeg,image/webp,image/gif"><button class="act" id="editLogoRemove">Remove</button></span>
+    </div>
+    <p class="dim small" id="editInfo"></p>
+    <div class="row" style="margin:12px 0 0"><button class="act primary" id="editSave">Save</button></div>
+  </div>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const toDate = iso => new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+const hm = d => d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+const time = iso => hm(toDate(iso));
+const day = iso => toDate(iso).toLocaleDateString([], {weekday:'short', day:'numeric', month:'short'});
+const api = async (path, options) => {
+  const response = await fetch('/api' + path, options);
+  if (!response.ok) { throw new Error(await response.text() || response.statusText); }
+  return response.status === 204 || response.status === 202 ? null : response.json();
+};
+const send = (method, body) => ({ method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+const store = {
+  get(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch (error) { return fallback; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch (error) { /* storage unavailable */ } }
+};
+
+let channels = [];
+let tab = 'channels';
+let view = store.get('view', 'list');
+let kindFilter = store.get('kindFilter', 'all');
+
+function segment(id, attribute, current, onPick) {
+  const buttons = document.querySelectorAll(`#${id} button`);
+  const show = value => buttons.forEach(b => b.classList.toggle('active', b.dataset[attribute] === String(value)));
+  buttons.forEach(b => b.onclick = () => { show(b.dataset[attribute]); onPick(b.dataset[attribute]); });
+  show(current);
+}
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
+  document.querySelectorAll('section').forEach(s => s.classList.toggle('active', s.id === tab));
+  applyLayout();
+  refresh(true);
+});
+document.querySelectorAll('.base').forEach(e => e.textContent = location.origin + (e.dataset.suffix || ''));
+
+// ---------- channel identity ----------
+function monogram(name) {
+  const words = name.replace(/[^A-Za-z0-9+ ]/g, ' ').trim().split(/\s+/).filter(Boolean);
+  const text = words.length > 1 ? words.slice(0, 3).map(w => /^\d/.test(w) || w.length <= 2 ? w : w[0]).join('').slice(0, 4) : (words[0] || '?').slice(0, 3);
+  let hash = 0;
+  for (const ch of name) { hash = (hash * 31 + ch.charCodeAt(0)) % 360; }
+  return { text: text.toUpperCase(), colour: `hsl(${hash} 38% 30%)` };
+}
+function logoHtml(c) {
+  if (c.logo) { return `<span class="logo has"><img src="${esc(c.logo)}" alt="" loading="lazy"></span>`; }
+  const m = monogram(c.name);
+  return `<span class="logo" style="background:${m.colour}" aria-hidden="true">${esc(m.text)}</span>`;
+}
+function tags(c) {
+  return (c.kind === 'radio' ? '<span class="tag">Radio</span>' : `<span class="tag">${c.hd ? 'HD' : 'SD'}</span>`) + (c.scrambled ? '<span class="tag">Encrypted</span>' : '');
+}
+function starHtml(c) {
+  return `<button class="star ${c.favourite ? 'on' : ''}" title="${c.favourite ? 'Remove from favourites' : 'Add to favourites'}" aria-label="Favourite" aria-pressed="${c.favourite}" onclick="toggleFav('${c.key}')">★</button>`;
+}
+function visibleChannels() {
+  const filter = $('filter').value.toLowerCase();
+  const matchesKind = c => kindFilter === 'all' || (kindFilter === 'fav' ? c.favourite
+    : kindFilter === 'radio' ? c.kind === 'radio' : c.kind !== 'radio' && (kindFilter === 'hd') === c.hd);
+  const rows = channels.filter(c => matchesKind(c) && (!filter || c.name.toLowerCase().includes(filter) || String(c.number).startsWith(filter)));
+  $('shownCount').textContent = rows.length === channels.length ? '' : `${rows.length} of ${channels.length}`;
+  $('noChannels').style.display = channels.length ? 'none' : '';
+  return rows;
+}
+async function toggleFav(key) {
+  const c = channels.find(x => x.key === key);
+  c.favourite = !c.favourite;
+  renderChannelViews();
+  await api('/channels/' + key, send('PUT', { favourite: c.favourite }));
+}
+
+// ---------- list view ----------
+function programme(e) {
+  return e ? `<span class="dim">${time(e.startUtc)}</span> ${esc(e.title)}` : '<span class="dim">–</span>';
+}
+function nowCell(e) {
+  if (!e) { return '<span class="dim">–</span>'; }
+  const pct = Math.max(0, Math.min(100, (Date.now() - toDate(e.startUtc).getTime()) / (e.durationSeconds * 10)));
+  return `${programme(e)}<div class="bar"><i style="width:${pct}%"></i></div>`;
+}
+function renderList() {
+  $('channelRows').innerHTML = visibleChannels().map(c => `
+    <tr class="${c.enabled ? '' : 'off'}">
+      <td class="num">${c.number}</td>
+      <td><div class="chan">${logoHtml(c)}<div style="min-width:0"><div class="name">${esc(c.name)}${tags(c)}</div><div class="dim small">${esc(c.muxName)}</div></div></div></td>
+      <td>${nowCell(c.now)}</td>
+      <td>${programme(c.next)}</td>
+      <td style="white-space:nowrap;text-align:right">
+        ${starHtml(c)}
+        <button class="act" onclick="openGuide('${c.key}')">Guide</button>
+        <a class="act" href="/play/${c.key}" title="Downloads a small playlist that opens in VLC. Raw stream: ${location.origin}/stream/channel/${c.number}">Play</a>
+        <button class="act" onclick="openEdit('${c.key}')">Edit</button>
+      </td>
+    </tr>`).join('');
+}
+
+// ---------- grid view ----------
+const PPM = 5;            // pixels per minute
+const WINDOW_HOURS = 12;
+const HALF_HOUR = 30 * 60000;
+let gridStart = 0;        // ms
+let gridData = new Map();
+let gridLoadedAt = 0;
+
+function gridDefaultStart() { return Math.floor((Date.now() - HALF_HOUR) / HALF_HOUR) * HALF_HOUR; }
+function fillDays() {
+  const options = [];
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i);
+    options.push(`<option value="${i}">${i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString([], {weekday:'long', day:'numeric', month:'short'})}</option>`);
+  }
+  $('gridDay').innerHTML = options.join('');
+}
+function syncDay() {
+  const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+  const index = Math.floor((gridStart - midnight.getTime()) / 86400000);
+  $('gridDay').value = String(Math.max(0, Math.min(7, index)));
+}
+async function loadGrid(resetScroll) {
+  if (!gridStart) { gridStart = gridDefaultStart(); }
+  const data = await api(`/guide?from=${new Date(gridStart).toISOString()}&hours=${WINDOW_HOURS}`);
+  gridData = new Map(data.channels.map(c => [c.key, c.events]));
+  gridLoadedAt = Date.now();
+  syncDay();
+  renderGrid(resetScroll);
+}
+function renderGrid(resetScroll) {
+  const wrap = $('gridWrap');
+  const keep = resetScroll ? { left: 0, top: 0 } : { left: wrap.scrollLeft, top: wrap.scrollTop };
+  const end = gridStart + WINDOW_HOURS * 3600000;
+  const width = WINDOW_HOURS * 60 * PPM;
+  const now = Date.now();
+  const x = t => (t - gridStart) / 60000 * PPM;
+
+  let ruler = `<div class="ruler" style="width:calc(var(--colw) + ${width}px)"><div class="corner">${new Date(gridStart).toLocaleDateString([], {weekday:'short', day:'numeric', month:'short'})}</div>`;
+  for (let t = gridStart; t < end; t += HALF_HOUR) {
+    const d = new Date(t);
+    const midnight = d.getHours() === 0 && d.getMinutes() === 0;
+    ruler += `<div class="tick ${midnight ? 'day' : ''}" style="left:calc(var(--colw) + ${x(t)}px)">${midnight ? d.toLocaleDateString([], {weekday:'short'}) + ' ' : ''}${hm(d)}</div>`;
+  }
+  ruler += '</div>';
+
+  const rows = visibleChannels().map(c => {
+    const events = gridData.get(c.key) || [];
+    const blocks = events.map(e => {
+      const start = toDate(e.startUtc).getTime();
+      const stop = start + e.durationSeconds * 1000;
+      const left = Math.max(0, x(start));
+      const right = Math.min(width, x(stop));
+      if (right - left < 3) { return ''; }
+      const state = stop <= now ? 'past' : start <= now ? 'live' : '';
+      return `<button class="ev ${state}" style="left:${left + 1}px;width:${right - left - 2}px" title="${esc(e.title)} · ${hm(new Date(start))}–${hm(new Date(stop))}" onclick="openProgramme('${c.key}', ${e.eventId})"><b>${esc(e.title)}</b><span>${hm(new Date(start))}</span></button>`;
+    }).join('');
+    return `<div class="grow ${c.enabled ? '' : 'off'}">
+      <div class="gch"><span class="num">${c.number}</span>${starHtml(c)}<button class="chan" style="background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding:0;text-align:left" title="${esc(c.name)} · ${esc(c.muxName)} · edit" onclick="openEdit('${c.key}')">${logoHtml(c)}<span class="name" style="max-width:150px;font-size:13px">${esc(c.name)}</span></button></div>
+      <div class="gline" style="width:${width}px">${blocks || '<span class="empty">No guide data</span>'}</div>
+    </div>`;
+  }).join('');
+
+  const nowLine = now >= gridStart && now < end ? `<div class="nowline" id="nowline" style="left:calc(var(--colw) + ${x(now)}px)"></div>` : '';
+  $('gridInner').style.width = `calc(var(--colw) + ${width}px)`;
+  $('gridInner').innerHTML = ruler + rows + nowLine;
+  wrap.scrollLeft = keep.left;
+  wrap.scrollTop = keep.top;
+}
+function openProgramme(key, eventId) {
+  const c = channels.find(x => x.key === key);
+  const e = (gridData.get(key) || []).find(x => x.eventId === eventId);
+  if (!c || !e) { return; }
+  const start = toDate(e.startUtc);
+  const stop = new Date(start.getTime() + e.durationSeconds * 1000);
+  const live = start.getTime() <= Date.now() && stop.getTime() > Date.now();
+  $('progTitle').textContent = e.title;
+  $('progWhen').textContent = `${c.number} ${c.name} · ${day(e.startUtc)} ${hm(start)}–${hm(stop)}${e.genre ? ' · ' + e.genre : ''}${live ? ' · on now' : ''}`;
+  $('progDesc').textContent = e.description || 'No description broadcast for this programme.';
+  $('progActions').innerHTML = (live ? `<a class="act primary" href="/play/${c.key}">Play in VLC</a>` : '') +
+    (stop.getTime() > Date.now() ? `<button class="act" onclick="record('${c.key}', ${e.eventId}, this)">Record</button>` : '') +
+    `<button class="act" onclick="prog.close(); openGuide('${c.key}')">Full channel guide</button>`;
+  $('prog').showModal();
+}
+$('gridPrev').onclick = () => { gridStart -= 6 * 3600000; loadGrid(true); };
+$('gridNext').onclick = () => { gridStart += 6 * 3600000; loadGrid(true); };
+$('gridNow').onclick = () => { gridStart = gridDefaultStart(); loadGrid(true); };
+$('gridDay').onchange = () => {
+  const index = parseInt($('gridDay').value);
+  if (index === 0) { gridStart = gridDefaultStart(); }
+  else { const d = new Date(); d.setHours(6, 0, 0, 0); d.setDate(d.getDate() + index); gridStart = d.getTime(); }
+  loadGrid(true);
+};
+
+// ---------- shared channel view plumbing ----------
+function applyLayout() {
+  const grid = tab === 'channels' && view === 'grid';
+  $('main').classList.toggle('wide', grid);
+  $('listView').style.display = view === 'list' ? '' : 'none';
+  $('gridView').style.display = view === 'grid' ? '' : 'none';
+  $('gridNav').style.display = view === 'grid' ? 'flex' : 'none';
+}
+function renderChannelViews() {
+  if (view === 'grid') { renderGrid(false); } else { renderList(); }
+}
+segment('viewToggle', 'view', view, value => { view = value; store.set('view', value); applyLayout(); refresh(true); });
+segment('kindFilter', 'kind', kindFilter, value => { kindFilter = value; store.set('kindFilter', value); renderChannelViews(); });
+$('filter').oninput = renderChannelViews;
+$('showAll').onchange = () => refresh(true);
+
+// ---------- per-channel guide, recording ----------
+async function openGuide(key) {
+  const channel = channels.find(c => c.key === key);
+  $('guideTitle').textContent = `${channel.number}  ${channel.name}`;
+  const events = await api(`/epg/${key}?hours=168`);
+  let last = '';
+  $('guideRows').innerHTML = events.length ? events.map(e => {
+    const d = day(e.startUtc);
+    const head = d !== last ? `<tr><th colspan="3">${d}</th></tr>` : '';
+    last = d;
+    return `${head}<tr><td class="num">${time(e.startUtc)}</td>
+      <td><b>${esc(e.title)}</b><div class="dim small">${esc(e.description)}</div></td>
+      <td><button class="act" onclick="record('${key}', ${e.eventId}, this)">Record</button></td></tr>`;
+  }).join('') : '<tr><td class="dim">No guide data for this channel yet. It fills in as muxes are tuned.</td></tr>';
+  $('guide').showModal();
+}
+async function record(serviceKey, eventId, button) {
+  try {
+    await api('/recordings', send('POST', { serviceKey, eventId }));
+    button.textContent = 'Scheduled';
+    button.disabled = true;
+  } catch (error) { alert(error.message); }
+}
+
+// ---------- edit dialog ----------
+let editing = null;
+function openEdit(key) {
+  editing = channels.find(c => c.key === key);
+  $('editTitle').textContent = `Edit ${editing.name}`;
+  $('editName').value = editing.name;
+  $('editNumber').value = editing.number;
+  $('editEnabled').checked = editing.enabled;
+  $('editFav').checked = editing.favourite;
+  $('editLogo').value = '';
+  $('editLogoNow').innerHTML = logoHtml(editing);
+  $('editLogoRemove').style.display = editing.logo ? '' : 'none';
+  $('editInfo').textContent = `${editing.muxName} · service ${editing.serviceId} · ${editing.streams.map(s => s.codec).join(', ') || 'no stream details'}`;
+  $('edit').showModal();
+}
+$('editSave').onclick = async () => {
+  try {
+    const body = { favourite: $('editFav').checked };
+    if ($('editName').value.trim() !== editing.name) { body.name = $('editName').value.trim(); }
+    if (parseInt($('editNumber').value) !== editing.number) { body.number = parseInt($('editNumber').value); }
+    if ($('editEnabled').checked !== editing.enabled) { body.enabled = $('editEnabled').checked; }
+    await api('/channels/' + editing.key, send('PUT', body));
+    if ($('editLogo').files.length) {
+      const form = new FormData();
+      form.append('file', $('editLogo').files[0]);
+      await api(`/channels/${editing.key}/logo`, { method: 'POST', body: form });
+    }
+    $('edit').close();
+    refresh(true);
+  } catch (error) { alert(error.message); }
+};
+$('editLogoRemove').onclick = async () => {
+  await api(`/channels/${editing.key}/logo`, { method: 'DELETE' });
+  $('edit').close();
+  refresh(true);
+};
+$('logoFiles').onchange = async () => {
+  const form = new FormData();
+  for (const file of $('logoFiles').files) { form.append('files', file); }
+  try {
+    const result = await api('/logos', { method: 'POST', body: form });
+    $('logoResult').style.display = '';
+    $('logoResult').textContent = `Matched ${result.matched.length}:\n${result.matched.join('\n') || '(none)'}` +
+      (result.unmatched.length ? `\n\nNot matched ${result.unmatched.length}:\n${result.unmatched.join('\n')}` : '');
+  } catch (error) { alert(error.message); }
+  $('logoFiles').value = '';
+};
+
+// ---------- recordings ----------
+async function renderRecordings() {
+  const list = await api('/recordings');
+  $('noRecordings').style.display = list.length ? 'none' : '';
+  const colour = { Recording: 'bad', Completed: 'ok', Failed: 'warn', Scheduled: '', Cancelled: 'dim' };
+  $('recordingRows').innerHTML = list.map(r => `
+    <tr>
+      <td>${day(r.startUtc)} <span class="dim">${time(r.startUtc)}–${time(r.stopUtc)}</span></td>
+      <td><b>${esc(r.title)}</b>${r.error ? `<div class="warn small">${esc(r.error)}</div>` : ''}</td>
+      <td>${esc(r.channelName)}</td>
+      <td class="${colour[r.status]}">${r.status}${r.bytes ? ` <span class="dim small">${(r.bytes / 1e6).toFixed(0)} MB</span>` : ''}</td>
+      <td style="white-space:nowrap;text-align:right">
+        ${r.filePath ? `<a class="act" href="/recordings/${r.id}/file">Download</a>` : ''}
+        <button class="act" onclick="removeRecording('${r.id}', '${r.status}')">${r.status === 'Recording' ? 'Stop' : 'Delete'}</button>
+      </td>
+    </tr>`).join('');
+}
+async function removeRecording(id, status) {
+  const deleteFile = status !== 'Recording' && status !== 'Scheduled' && confirm('Also delete the recorded file?');
+  await api(`/recordings/${id}?deleteFile=${deleteFile}`, { method: 'DELETE' });
+  refresh(true);
+}
+
+// ---------- tuners + signal history ----------
+function renderTuners(status) {
+  $('tunerCards').innerHTML = status.tuners.map(t => {
+    const s = t.signal;
+    const strength = s.strengthDbm != null ? s.strengthDbm.toFixed(1) + ' dBm' : s.strengthPercent != null ? s.strengthPercent.toFixed(0) + ' %' : '–';
+    const snr = s.snrDb != null ? s.snrDb.toFixed(1) + ' dB' : s.snrPercent != null ? s.snrPercent.toFixed(0) + ' %' : '–';
+    return `<div class="card"><h3>${esc(t.name)}</h3><div class="kv">
+      <div>Mux</div><div>${t.mux ? esc(t.mux.name) + ` <span class="dim">${(t.mux.frequencyHz / 1e6).toFixed(3)} MHz</span>` : '<span class="dim">idle</span>'}</div>
+      <div>Lock</div><div class="${s.locked ? 'ok' : 'dim'}">${t.mux ? (s.locked ? 'locked' : 'no lock') : '–'}</div>
+      <div>Signal</div><div>${strength}</div>
+      <div>SNR</div><div>${snr}</div>
+      <div>Bitrate</div><div>${t.bitrateMbps} Mbit/s</div>
+      <div>Errors</div><div class="${t.continuityErrors ? 'warn' : ''}">${t.continuityErrors} continuity, ${t.transportErrors} transport</div>
+      <div>In use by</div><div>${t.subscribers.length ? t.subscribers.map(x => esc(x.description)).join('<br>') : '<span class="dim">nobody</span>'}</div>
+    </div></div>`;
+  }).join('') || '<p class="dim">No tuners found. Check the USB tuner is plugged in.</p>';
+}
+
+let sigHours = parseInt(store.get('sigHours', '24'));
+let sigLoadedAt = 0;
+segment('sigRange', 'hours', sigHours, value => { sigHours = parseInt(value); store.set('sigHours', value); loadSignal(); });
+
+const SVG = 'http://www.w3.org/2000/svg';
+function svg(tag, attributes, parent) {
+  const node = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attributes)) { node.setAttribute(k, v); }
+  if (parent) { parent.appendChild(node); }
+  return node;
+}
+function niceTicks(lo, hi) {
+  const step = [1, 2, 5, 10, 20, 25, 50].find(s => (hi - lo) / s <= 4) || 50;
+  const ticks = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) { ticks.push(v); }
+  return ticks;
+}
+async function loadSignal() {
+  const data = await api(`/signal?hours=${sigHours}`);
+  sigLoadedAt = Date.now();
+  const all = data.muxes.flatMap(m => m.samples);
+  const useDb = all.some(s => s.snrDb != null);
+  const unit = useDb ? 'dB' : '%';
+  const value = s => useDb ? s.snrDb : s.snrPercent;
+  const values = all.map(value).filter(v => v != null);
+  // One shared scale for every panel, so the muxes can be compared at a glance.
+  let lo = values.length ? Math.min(...values) : 0;
+  let hi = values.length ? Math.max(...values) : 1;
+  const pad = Math.max(1, (hi - lo) * 0.15);
+  lo = Math.floor(lo - pad); hi = Math.ceil(hi + pad);
+  $('sigUnitHead').textContent = `SNR min (${unit})`;
+  $('sigNote').textContent = all.length ? `SNR in ${unit}, same scale on every panel. A mux is only measured while a tuner is on it, so gaps are normal.` : 'No readings yet. They appear once a tuner has been on a mux for a minute.';
+
+  const cards = $('sigCards');
+  cards.textContent = '';
+  const tableRows = [];
+  const pending = []; // charts are drawn once every panel is in place, so each knows its final width
+  for (const mux of data.muxes) {
+    const points = mux.samples.filter(s => value(s) != null);
+    const errors = mux.samples.reduce((n, s) => n + s.continuityErrors + s.uncorrectedBlocks, 0);
+    const unlocked = mux.samples.filter(s => !s.locked).length;
+    const latest = points[points.length - 1];
+    const vals = points.map(value);
+    const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    const lastStrength = [...mux.samples].reverse().find(s => s.strengthDbm != null || s.strengthPercent != null);
+    const strengthText = !lastStrength ? '–' : lastStrength.strengthDbm != null ? lastStrength.strengthDbm.toFixed(1) + ' dBm' : lastStrength.strengthPercent.toFixed(0) + ' %';
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    const head = document.createElement('div'); head.className = 'head';
+    const h = document.createElement('h3'); h.textContent = mux.name; head.appendChild(h);
+    const freq = document.createElement('span'); freq.className = 'dim small'; freq.textContent = `${(mux.frequencyHz / 1e6).toFixed(3)} MHz ${mux.system}`; head.appendChild(freq);
+    card.appendChild(head);
+    const stat = document.createElement('div'); stat.className = 'stat';
+    stat.textContent = latest ? `${value(latest).toFixed(1)} ${unit}` : '–';
+    card.appendChild(stat);
+    const meta = document.createElement('div'); meta.className = 'meta';
+    const m1 = document.createElement('span'); m1.textContent = latest ? `latest SNR, ${hm(new Date(latest.t * 1000))}` : 'no readings in this range'; meta.appendChild(m1);
+    const m2 = document.createElement('span'); m2.textContent = `strength ${strengthText}`; meta.appendChild(m2);
+    const m3 = document.createElement('span'); m3.className = 'errs';
+    if (errors || unlocked) {
+      const icon = document.createElement('i'); icon.textContent = '▲'; m3.appendChild(icon);
+      m3.appendChild(document.createTextNode(`${errors} errors${unlocked ? `, ${unlocked} readings without lock` : ''}`));
+    } else {
+      m3.className = 'dim'; m3.textContent = mux.samples.length ? 'no errors' : '';
+    }
+    meta.appendChild(m3);
+    card.appendChild(meta);
+    cards.appendChild(card);
+    pending.push(() => card.appendChild(buildChart(mux, points, value, unit, lo, hi, data.from, data.to, card.clientWidth - 34)));
+
+    tableRows.push(`<tr><td>${esc(mux.name)}</td><td>${mux.samples.length}</td><td>${vals.length ? Math.min(...vals).toFixed(1) : '–'}</td><td>${avg != null ? avg.toFixed(1) : '–'}</td><td>${vals.length ? Math.max(...vals).toFixed(1) : '–'}</td><td>${strengthText}</td><td>${errors}</td></tr>`);
+  }
+  pending.forEach(draw => draw());
+  $('sigTable').innerHTML = tableRows.join('');
+}
+function buildChart(mux, points, value, unit, lo, hi, from, to, width) {
+  const W = Math.max(260, width), H = 130, L = 30, R = 8, T = 8, B = 20;
+  const box = document.createElement('div'); box.className = 'chart';
+  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, tabindex: '0', role: 'img',
+    'aria-label': `${mux.name} signal to noise ratio, ${points.length} readings` });
+  const x = t => L + (t - from) / (to - from) * (W - L - R);
+  const y = v => T + (hi - v) / (hi - lo) * (H - T - B);
+
+  for (const tick of niceTicks(lo, hi)) {
+    svg('line', { x1: L, x2: W - R, y1: y(tick), y2: y(tick), stroke: 'var(--grid)', 'stroke-width': 1 }, root);
+    svg('text', { x: L - 5, y: y(tick) + 3, 'text-anchor': 'end' }, root).textContent = tick;
+  }
+  svg('line', { x1: L, x2: W - R, y1: H - B, y2: H - B, stroke: 'var(--axis)', 'stroke-width': 1 }, root);
+  const span = to - from;
+  const stepHours = span <= 6 * 3600 ? 1 : span <= 24 * 3600 ? (W < 420 ? 6 : 4) : (W < 420 ? 12 : 8);
+  const first = new Date(from * 1000); first.setMinutes(0, 0, 0); first.setHours(Math.ceil((first.getHours() + 1) / stepHours) * stepHours);
+  for (let t = first.getTime() / 1000; t < to; t += stepHours * 3600) {
+    if (t <= from) { continue; }
+    svg('line', { x1: x(t), x2: x(t), y1: H - B, y2: H - B + 4, stroke: 'var(--axis)', 'stroke-width': 1 }, root);
+    svg('text', { x: x(t), y: H - 5, 'text-anchor': 'middle' }, root).textContent = hm(new Date(t * 1000));
+  }
+
+  // Readings more than five minutes apart are separate visits to the mux: break the line there.
+  let path = '';
+  points.forEach((p, i) => {
+    const joined = i > 0 && p.t - points[i - 1].t <= 300;
+    path += `${joined ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(value(p)).toFixed(1)}`;
+    const alone = !joined && (i === points.length - 1 || points[i + 1].t - p.t > 300);
+    if (alone) { svg('circle', { cx: x(p.t), cy: y(value(p)), r: 2.5, fill: 'var(--series)' }, root); }
+  });
+  svg('path', { d: path, fill: 'none', stroke: 'var(--series)', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, root);
+  for (const s of mux.samples.filter(s => s.continuityErrors + s.uncorrectedBlocks > 0 || !s.locked)) {
+    const cx = x(s.t), base = H - B - 1;
+    svg('path', { d: `M${cx - 4},${base}L${cx + 4},${base}L${cx},${base - 7}Z`, fill: 'var(--critical)' }, root);
+  }
+  if (!points.length) {
+    svg('text', { x: (W + L) / 2, y: H / 2, 'text-anchor': 'middle' }, root).textContent = 'No readings in this range';
+  }
+
+  const cross = svg('line', { y1: T, y2: H - B, stroke: 'var(--dim)', 'stroke-width': 1, visibility: 'hidden' }, root);
+  const dot = svg('circle', { r: 4, fill: 'var(--series)', stroke: 'var(--panel)', 'stroke-width': 2, visibility: 'hidden' }, root);
+  const tip = document.createElement('div'); tip.className = 'tip';
+  let index = -1;
+  const show = i => {
+    if (!points.length) { return; }
+    index = Math.max(0, Math.min(points.length - 1, i));
+    const p = points[index];
+    const px = x(p.t), py = y(value(p));
+    cross.setAttribute('x1', px); cross.setAttribute('x2', px); cross.setAttribute('visibility', 'visible');
+    dot.setAttribute('cx', px); dot.setAttribute('cy', py); dot.setAttribute('visibility', 'visible');
+    tip.textContent = '';
+    const strong = document.createElement('b'); strong.textContent = `${value(p).toFixed(1)} ${unit}`; tip.appendChild(strong);
+    const when = document.createElement('div'); when.textContent = new Date(p.t * 1000).toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit'}); tip.appendChild(when);
+    const strength = p.strengthDbm != null ? `${p.strengthDbm.toFixed(1)} dBm` : p.strengthPercent != null ? `${p.strengthPercent.toFixed(0)} %` : null;
+    if (strength) { const row = document.createElement('div'); row.textContent = `strength ${strength}`; tip.appendChild(row); }
+    const errs = p.continuityErrors + p.uncorrectedBlocks;
+    if (errs || !p.locked) { const row = document.createElement('div'); row.textContent = `▲ ${errs} errors${p.locked ? '' : ', no lock'}`; tip.appendChild(row); }
+    tip.style.display = 'block';
+    const scale = root.clientWidth / W;
+    const left = px * scale;
+    tip.style.left = `${Math.min(Math.max(0, left + 10), box.clientWidth - tip.offsetWidth)}px`;
+    tip.style.top = `${Math.max(0, py * (root.clientHeight / H) - tip.offsetHeight - 8)}px`;
+  };
+  const hide = () => { cross.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); tip.style.display = 'none'; index = -1; };
+  root.addEventListener('pointermove', event => {
+    const rect = root.getBoundingClientRect();
+    const t = from + ((event.clientX - rect.left) / rect.width * W - L) / (W - L - R) * (to - from);
+    let best = 0;
+    points.forEach((p, i) => { if (Math.abs(p.t - t) < Math.abs(points[best].t - t)) { best = i; } });
+    show(best);
+  });
+  root.addEventListener('pointerleave', hide);
+  root.addEventListener('focus', () => show(points.length - 1));
+  root.addEventListener('blur', hide);
+  root.addEventListener('keydown', event => {
+    if (event.key === 'ArrowLeft') { show(index - 1); event.preventDefault(); }
+    if (event.key === 'ArrowRight') { show(index + 1); event.preventDefault(); }
+  });
+  box.appendChild(root);
+  box.appendChild(tip);
+  return box;
+}
+
+// ---------- setup ----------
+async function renderSetup(status) {
+  const muxes = await api('/muxes');
+  $('muxRows').innerHTML = muxes.map(m => `<tr>
+    <td>${esc(m.name)}</td><td>${(m.frequencyHz / 1e6).toFixed(3)} MHz</td><td>${m.system}</td><td>${m.plpId ?? '–'}</td><td>${m.services}</td>
+    <td style="text-align:right"><button class="act" onclick="removeMux('${encodeURIComponent(m.key)}')">Remove</button></td></tr>`).join('');
+  const scan = status.scan;
+  $('scanBtn').disabled = scan.running;
+  $('scanBtn').textContent = scan.running ? `Scanning ${scan.muxesDone + 1}/${scan.muxesTotal}…` : 'Scan now';
+  const last = status.lastScanUtc ? `Last scan: ${day(status.lastScanUtc)} ${time(status.lastScanUtc)}.` : 'Not scanned yet.';
+  const auto = status.autoScanIntervalDays > 0 ? ` Rescans automatically every ${status.autoScanIntervalDays} days, overnight, when no tuner is in use.` : ' Automatic rescan is off.';
+  $('scanInfo').textContent = last + auto;
+  $('scanLog').style.display = scan.log.length || scan.running ? '' : 'none';
+  $('scanLog').textContent = scan.log.join('\n') + (scan.running && scan.currentMux ? `\n… ${scan.currentMux}` : '');
+}
+async function removeMux(key) {
+  if (confirm('Remove this mux and its channels?')) {
+    await api('/muxes/' + key, { method: 'DELETE' });
+    refresh(true);
+  }
+}
+$('scanBtn').onclick = async () => { await api('/scan', { method: 'POST' }); refresh(true); };
+$('muxAdd').onclick = async () => {
+  try {
+    const plp = $('muxPlp').value.trim();
+    await api('/muxes', send('POST', {
+      name: $('muxName').value.trim(), system: $('muxSys').value,
+      frequencyHz: Math.round(parseFloat($('muxFreq').value) * 1e6), plpId: plp === '' ? null : parseInt(plp)
+    }));
+    refresh(true);
+  } catch (error) { alert(error.message); }
+};
+
+// ---------- refresh loop ----------
+// `full` is set after the user changes something; the 3-second tick passes false so it
+// never rebuilds the grid or the charts under the pointer.
+async function refresh(full) {
+  try {
+    const status = await api('/status');
+    const busy = status.tuners.filter(t => t.mux).length;
+    $('summary').textContent = `${status.channels} channels · ${status.guideEntries} guide entries · ${busy}/${status.tuners.length} tuners in use`;
+    if (tab === 'channels') {
+      const anyDialog = $('guide').open || $('prog').open || $('edit').open;
+      if (view === 'list' && !anyDialog) {
+        channels = await api('/channels' + ($('showAll').checked ? '?all=true' : ''));
+        renderList();
+      } else if (view === 'grid' && (full || Date.now() - gridLoadedAt > 5 * 60000) && !anyDialog) {
+        channels = await api('/channels' + ($('showAll').checked ? '?all=true' : ''));
+        await loadGrid(gridLoadedAt === 0);
+      } else if (view === 'grid') {
+        const line = $('nowline');
+        if (line) { line.style.left = `calc(var(--colw) + ${(Date.now() - gridStart) / 60000 * PPM}px)`; }
+      }
+    }
+    if (tab === 'recordings') { await renderRecordings(); }
+    if (tab === 'tuners') {
+      renderTuners(status);
+      if (full || Date.now() - sigLoadedAt > 60000) { await loadSignal(); }
+    }
+    if (tab === 'setup') { await renderSetup(status); }
+  } catch (error) { $('summary').textContent = 'Offline: ' + error.message; }
+}
+let resizeTimer = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (tab === 'tuners') { loadSignal(); } }, 250);
+});
+fillDays();
+applyLayout();
+refresh(true);
+setInterval(() => refresh(false), 3000);
+</script>
+</body>
+</html>

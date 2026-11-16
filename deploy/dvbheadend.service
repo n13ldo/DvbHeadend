@@ -1,0 +1,26 @@
+[Unit]
+Description=DvbHeadend DVB-T/T2 streaming server
+After=network-online.target
+Wants=network-online.target
+Conflicts=tvheadend.service
+
+[Service]
+Type=simple
+User=dvbheadend
+Group=dvbheadend
+SupplementaryGroups=video
+WorkingDirectory=/opt/dvbheadend
+ExecStart=/opt/dotnet/dotnet /opt/dvbheadend/dvbheadend.dll
+Environment=DOTNET_ROOT=/opt/dotnet
+Environment=DOTNET_NOLOGO=1
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+StateDirectory=dvbheadend
+Restart=on-failure
+RestartSec=5
+# Keep the mux reader threads ahead of everything else on the Pi.
+Nice=-5
+KillSignal=SIGINT
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

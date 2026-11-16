@@ -1,0 +1,8 @@
+{
+  "Urls": "http://0.0.0.0:5004",
+  "Headend": {
+    "FriendlyName": "DvbHeadend",
+    "RecordingsDir": "/var/lib/dvbheadend/recordings",
+    "EpgGrabIntervalMinutes": 120
+  }
+}
