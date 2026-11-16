@@ -611,6 +611,34 @@ Test("packet encoding matches the MQTT 3.1.1 wire format", () =>
     Equal((byte)0x26, MqttConnection.BuildConnect("id", null, null, "w", "off")[9], "connect flags without a login");
 });
 
+Test("Home Assistant discovery uses current keys only", () =>
+{
+    string dir = Path.Combine(Path.GetTempPath(), "dvbh-test-" + Guid.NewGuid().ToString("n"));
+    var settings = new HeadendOptions { DataDir = dir, DefaultMuxes = [new MuxDefinition { Name = "PSB1", FrequencyHz = 674_000_000 }] };
+    settings.Mqtt.Host = "broker";
+    var options = Options.Create(settings);
+    var store = new StateStore(options, NullLogger<StateStore>.Instance);
+    using var manager = new TunerManager([new FakeTuner("adapter0")], options, NullLogger<TunerManager>.Instance);
+    var publisher = new MqttPublisher(manager, store, new EpgStore(options, NullLogger<EpgStore>.Instance),
+        new Scanner(manager, store, NullLogger<Scanner>.Instance), new SignalHistory(options, NullLogger<SignalHistory>.Instance),
+        new MqttStatus(), options, NullLogger<MqttPublisher>.Instance);
+    var discovery = publisher.BuildDiscovery();
+    True(discovery.Count >= 10, $"expected a full set of entities, got {discovery.Count}");
+    foreach (var (topic, payload) in discovery)
+    {
+        using var json = System.Text.Json.JsonDocument.Parse(payload);
+        var root = json.RootElement;
+        string component = topic.Split('/')[1];
+        True(!root.TryGetProperty("object_id", out _), $"{topic} still sends the removed object_id key");
+        True(root.GetProperty("default_entity_id").GetString()!.StartsWith(component + "."), $"{topic}: default_entity_id needs the {component} domain");
+        True(root.GetProperty("unique_id").GetString()!.Length > 0, "unique_id");
+        Equal(component == "button", root.TryGetProperty("command_topic", out _), $"{topic}: command_topic");
+        Equal(component != "button", root.TryGetProperty("state_topic", out _), $"{topic}: state_topic");
+    }
+    True(publisher.BuildState().Any(s => s.Topic == "dvbheadend/summary"), "summary state missing");
+    Directory.Delete(dir, true);
+});
+
 Console.WriteLine("Tuner allocation");
 
 TunerManager Manager(int count, out List<FakeTuner> fakes, int idleSeconds = 30)

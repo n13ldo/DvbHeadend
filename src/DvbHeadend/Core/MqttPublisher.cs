@@ -242,7 +242,8 @@ public sealed class MqttPublisher(TunerManager tuners, StateStore state, EpgStor
             {
                 ["name"] = name,
                 ["unique_id"] = $"{DeviceId}_{id}",
-                ["object_id"] = $"dvbheadend_{id}",
+                // Home Assistant dropped the older "object_id" key in 2026.4 and rejects payloads that carry it.
+                ["default_entity_id"] = $"{component}.dvbheadend_{id}",
                 ["availability_topic"] = availability,
                 ["device"] = device.DeepClone()
             };
