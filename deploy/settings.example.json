@@ -3,6 +3,12 @@
   "Headend": {
     "FriendlyName": "DvbHeadend",
     "RecordingsDir": "/var/lib/dvbheadend/recordings",
-    "EpgGrabIntervalMinutes": 120
+    "EpgGrabIntervalMinutes": 120,
+    "Mqtt": {
+      "Host": "",
+      "Port": 1883,
+      "Username": "",
+      "Password": ""
+    }
   }
 }

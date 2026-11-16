@@ -586,6 +586,31 @@ Test("guide replaces a rescheduled slot instead of keeping both", () =>
     Directory.Delete(dir, true);
 });
 
+Console.WriteLine("MQTT");
+
+Test("packet encoding matches the MQTT 3.1.1 wire format", () =>
+{
+    var length = new List<byte>();
+    MqttConnection.WriteRemainingLength(length, 0);
+    MqttConnection.WriteRemainingLength(length, 127);
+    MqttConnection.WriteRemainingLength(length, 128);
+    MqttConnection.WriteRemainingLength(length, 16383);
+    MqttConnection.WriteRemainingLength(length, 2097152);
+    True(length.SequenceEqual(new byte[] { 0x00, 0x7F, 0x80, 0x01, 0xFF, 0x7F, 0x80, 0x80, 0x80, 0x01 }), "remaining-length varint");
+
+    byte[] publish = MqttConnection.BuildPublish("a/b", "hi", retain: true);
+    True(publish.SequenceEqual(new byte[] { 0x31, 0x07, 0x00, 0x03, (byte)'a', (byte)'/', (byte)'b', (byte)'h', (byte)'i' }), "publish");
+
+    byte[] subscribe = MqttConnection.BuildSubscribe(1, "x/#");
+    True(subscribe.SequenceEqual(new byte[] { 0x82, 0x08, 0x00, 0x01, 0x00, 0x03, (byte)'x', (byte)'/', (byte)'#', 0x00 }), "subscribe");
+
+    byte[] connect = MqttConnection.BuildConnect("id", "u", "p", "w", "off");
+    True(connect.AsSpan(0, 2).SequenceEqual(new byte[] { 0x10, (byte)(connect.Length - 2) }), "connect header");
+    True(connect.AsSpan(2, 7).SequenceEqual(new byte[] { 0x00, 0x04, (byte)'M', (byte)'Q', (byte)'T', (byte)'T', 0x04 }), "protocol name and level");
+    Equal((byte)0xE6, connect[9], "connect flags: user, password, will retain, will, clean session");
+    Equal((byte)0x26, MqttConnection.BuildConnect("id", null, null, "w", "off")[9], "connect flags without a login");
+});
+
 Console.WriteLine("Tuner allocation");
 
 TunerManager Manager(int count, out List<FakeTuner> fakes, int idleSeconds = 30)

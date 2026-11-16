@@ -37,6 +37,9 @@ cp -r "$HERE/publish/." "$APP/"
 if [[ ! -f /etc/dvbheadend/settings.json ]]; then
   cp "$HERE/deploy/settings.example.json" /etc/dvbheadend/settings.json
 fi
+# The settings file may hold the MQTT password: readable by root and the service only.
+chown root:dvbheadend /etc/dvbheadend/settings.json
+chmod 640 /etc/dvbheadend/settings.json
 chown -R dvbheadend:dvbheadend /var/lib/dvbheadend
 
 # 4. Tvheadend holds the tuners exclusively; it has to go quiet first.

@@ -188,6 +188,11 @@
         <pre id="logoResult" style="display:none"></pre>
       </div>
       <div class="card">
+        <h3>Home Assistant (MQTT)</h3>
+        <p id="mqttInfo" class="small"></p>
+        <p class="dim small">Set the broker under <code>Headend:Mqtt</code> in <code>/etc/dvbheadend/settings.json</code> and restart the service. Tuners, viewing and per-mux signal then appear in Home Assistant as a DvbHeadend device.</p>
+      </div>
+      <div class="card">
         <h3>Connecting clients</h3>
         <div class="small">
           <p><b>Jellyfin / Plex / Emby:</b> add an <i>HDHomeRun</i> tuner at <code class="base"></code></p>
@@ -728,6 +733,16 @@ async function renderSetup(status) {
   $('muxRows').innerHTML = muxes.map(m => `<tr>
     <td>${esc(m.name)}</td><td>${(m.frequencyHz / 1e6).toFixed(3)} MHz</td><td>${m.system}</td><td>${m.plpId ?? '–'}</td><td>${m.services}</td>
     <td style="text-align:right"><button class="act" onclick="removeMux('${encodeURIComponent(m.key)}')">Remove</button></td></tr>`).join('');
+  const mqtt = status.mqtt;
+  const info = $('mqttInfo');
+  info.textContent = '';
+  const state = document.createElement('b');
+  state.className = !mqtt.enabled ? 'dim' : mqtt.connected ? 'ok' : 'warn';
+  state.textContent = !mqtt.enabled ? 'Not configured' : mqtt.connected ? 'Connected' : 'Not connected';
+  info.appendChild(state);
+  if (mqtt.enabled) {
+    info.appendChild(document.createTextNode(` to ${mqtt.broker}` + (mqtt.connected && mqtt.lastPublishUtc ? `, last update ${time(mqtt.lastPublishUtc)}` : '') + (mqtt.lastError ? `. ${mqtt.lastError}` : '')));
+  }
   const scan = status.scan;
   $('scanBtn').disabled = scan.running;
   $('scanBtn').textContent = scan.running ? `Scanning ${scan.muxesDone + 1}/${scan.muxesTotal}…` : 'Scan now';

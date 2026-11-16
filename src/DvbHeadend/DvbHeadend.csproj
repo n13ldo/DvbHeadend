@@ -9,7 +9,7 @@
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <RootNamespace>DvbHeadend</RootNamespace>
     <AssemblyName>dvbheadend</AssemblyName>
-    <Version>0.4.0</Version>
+    <Version>0.5.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

@@ -111,8 +111,23 @@ public sealed class FileTunerOptions
     public double BitrateMbps { get; set; } = 8;
 }
 
+public sealed class MqttOptions
+{
+    /// <summary>Broker host name or address. Empty turns MQTT off.</summary>
+    public string Host { get; set; } = "";
+    public int Port { get; set; } = 1883;
+    public bool Tls { get; set; }
+    public string? Username { get; set; }
+    public string? Password { get; set; }
+    public string BaseTopic { get; set; } = "dvbheadend";
+    /// <summary>Home Assistant discovery prefix. Empty skips discovery and publishes state only.</summary>
+    public string DiscoveryPrefix { get; set; } = "homeassistant";
+    public int PublishSeconds { get; set; } = 15;
+}
+
 public sealed class HeadendOptions
 {
+    public MqttOptions Mqtt { get; set; } = new();
     public string FriendlyName { get; set; } = "DvbHeadend";
     public string DataDir { get; set; } = "/var/lib/dvbheadend";
     public string RecordingsDir { get; set; } = "/var/lib/dvbheadend/recordings";

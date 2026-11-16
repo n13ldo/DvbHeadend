@@ -15,7 +15,7 @@ public static class GuideEndpoints
 {
     private static string BaseUrl(HttpContext http) => $"{http.Request.Scheme}://{http.Request.Host}";
 
-    private static string DeviceId(HeadendOptions options)
+    internal static string DeviceId(HeadendOptions options)
     {
         string seed = Environment.MachineName + options.FriendlyName;
         try

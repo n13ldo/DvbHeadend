@@ -59,6 +59,8 @@ builder.Services.AddSingleton<TunerManager>();
 builder.Services.AddSingleton<Scanner>();
 builder.Services.AddSingleton<SignalHistory>();
 builder.Services.AddHostedService<SignalSampler>();
+builder.Services.AddSingleton<MqttStatus>();
+builder.Services.AddHostedService<MqttPublisher>();
 builder.Services.AddHostedService<RecordingService>();
 builder.Services.AddHostedService<EpgGrabber>();
 builder.Services.AddHostedService<AutoScanService>();

@@ -57,6 +57,25 @@ public sealed class SignalHistory
         }
     }
 
+    public SignalSample? Latest(string muxKey)
+    {
+        lock (_lock)
+        {
+            return _byMux.TryGetValue(muxKey, out var samples) && samples.Count > 0 ? samples[^1] : null;
+        }
+    }
+
+    public long ErrorsSince(string muxKey, TimeSpan window)
+    {
+        long from = DateTimeOffset.UtcNow.Add(-window).ToUnixTimeSeconds();
+        lock (_lock)
+        {
+            return _byMux.TryGetValue(muxKey, out var samples)
+                ? samples.Where(s => s.T >= from).Sum(s => s.ContinuityErrors + s.UncorrectedBlocks)
+                : 0;
+        }
+    }
+
     public object Query(IReadOnlyList<MuxDefinition> muxes, TimeSpan range)
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();

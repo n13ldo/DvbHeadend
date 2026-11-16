@@ -14,6 +14,7 @@ on the LAN.
 - **Programme guide** from broadcast EIT, including the compressed text used on Freeview HD,
   refreshed in the background when a tuner is idle
 - **Recordings** to disk (local or a NAS mount), scheduled from the guide
+- **Home Assistant** over MQTT, with discovery: tuner activity, viewers and signal as sensors
 - **Web UI** on port 5004: channels as a list or a timeline grid guide, favourites, your own
   channel logos, recordings, live tuner status and per-mux signal history charts
 
@@ -59,6 +60,35 @@ Restart the service after editing.
 | `SignalSampleSeconds` / `SignalHistoryHours` | 20 / 48 | How often each tuned mux's signal is sampled, and how long the history is kept; 0 seconds turns it off |
 | `AutoScanIntervalDays` / `AutoScanHour` | 7 / 4 | Automatic channel rescan every N days at that local hour, only while no tuner is in use; 0 days turns it off |
 | `RecordingPreRollSeconds` / `PostRollSeconds` | 60 / 180 | Padding around recordings |
+
+### Home Assistant (MQTT)
+
+Add the broker to `/etc/dvbheadend/settings.json` and restart (`sudo systemctl restart dvbheadend`):
+
+```json
+{
+  "Headend": {
+    "Mqtt": { "Host": "192.168.1.10", "Port": 1883, "Username": "dvb", "Password": "secret" }
+  }
+}
+```
+
+With Home Assistant's MQTT integration on the same broker, a **DvbHeadend** device appears by
+discovery with: what each tuner is doing (channel names, or Idle / Guide update / Scanning),
+viewers, tuner lock and SNR, SNR and hourly error count per mux, a "Watching" summary, last
+scan time, and a **Rescan channels** button. Setup shows whether the broker link is up.
+
+| Key (under `Headend:Mqtt`) | Default | Meaning |
+|---|---|---|
+| `Host` | empty | Broker address; empty turns MQTT off |
+| `Port` / `Tls` | 1883 / false | Use 8883 and `true` for TLS |
+| `Username` / `Password` | none | Broker login, if it needs one |
+| `BaseTopic` | `dvbheadend` | State is published under this topic, retained |
+| `DiscoveryPrefix` | `homeassistant` | Empty skips Home Assistant discovery |
+| `PublishSeconds` | 15 | How often state is checked; only changes are sent |
+
+Topics: `dvbheadend/status` (online/offline), `dvbheadend/tuner/<id>/state`,
+`dvbheadend/mux/<kHz>/state`, `dvbheadend/summary`, and the command `dvbheadend/command/scan`.
 
 Recording to a NAS: mount the share (e.g. `/mnt/recordings` via `/etc/fstab`), make it
 writable by the `dvbheadend` user, and set `RecordingsDir`.
