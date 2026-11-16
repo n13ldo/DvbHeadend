@@ -60,6 +60,14 @@ builder.Services.AddSingleton<Scanner>();
 builder.Services.AddSingleton<SignalHistory>();
 builder.Services.AddHostedService<SignalSampler>();
 builder.Services.AddSingleton<MqttStatus>();
+builder.Services.AddSingleton<StatusBuilder>();
+builder.Services.AddSingleton<LiveClients>();
+builder.Services.AddHostedService<LiveNotifier>();
+builder.Services.AddSignalR().AddJsonProtocol(protocol =>
+{
+    protocol.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    protocol.PayloadSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+});
 builder.Services.AddHostedService<MqttPublisher>();
 builder.Services.AddHostedService<RecordingService>();
 builder.Services.AddHostedService<EpgGrabber>();
@@ -81,5 +89,6 @@ StreamEndpoints.Map(app);
 GuideEndpoints.Map(app);
 ApiEndpoints.Map(app);
 LogoEndpoints.Map(app);
+app.MapHub<LiveHub>("/live");
 
 app.Run();

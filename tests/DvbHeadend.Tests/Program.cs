@@ -586,6 +586,59 @@ Test("guide replaces a rescheduled slot instead of keeping both", () =>
     Directory.Delete(dir, true);
 });
 
+Console.WriteLine("Live updates");
+
+Test("now/next changes are reported once, and not on first sight", () =>
+{
+    string dir = Path.Combine(Path.GetTempPath(), "dvbh-test-" + Guid.NewGuid().ToString("n"));
+    var epg = new EpgStore(Options.Create(new HeadendOptions { DataDir = dir }), NullLogger<EpgStore>.Instance);
+    var changedKeys = new List<string>();
+    epg.ServiceChanged += changedKeys.Add;
+    const string key = "233a.1041.1044";
+    var start = DateTime.UtcNow.AddMinutes(-10);
+    epg.Ingest(new EitSection(4164, 0x1041, 0x233A, 0x4E, [new EitEvent(1, start, 3600, "Breakfast", "", null, false)]));
+    Equal(1, changedKeys.Count, "guide change notices after first ingest");
+
+    var known = new Dictionary<string, (int Now, int Next)>();
+    Equal(0, LiveNotifier.CollectNowNextChanges([key], epg, known).Count, "first sight");
+    Equal(0, LiveNotifier.CollectNowNextChanges([key], epg, known).Count, "nothing changed");
+
+    epg.Ingest(new EitSection(4164, 0x1041, 0x233A, 0x4E, [new EitEvent(2, start.AddHours(1), 1800, "Morning Live", "", null, false)]));
+    var changes = LiveNotifier.CollectNowNextChanges([key], epg, known);
+    Equal(1, changes.Count, "a next programme appeared");
+    Equal("Breakfast", changes[0].Now!.Title);
+    Equal("Morning Live", changes[0].Next!.Title);
+    Equal(0, LiveNotifier.CollectNowNextChanges([key], epg, known).Count, "reported once only");
+
+    epg.Ingest(new EitSection(4164, 0x1041, 0x233A, 0x4E, [new EitEvent(1, start, 3600, "Breakfast", "", null, false)]));
+    Equal(2, changedKeys.Count, "re-sending identical data is not a change");
+    Directory.Delete(dir, true);
+});
+
+Test("channel and recording edits raise change events", () =>
+{
+    string dir = Path.Combine(Path.GetTempPath(), "dvbh-test-" + Guid.NewGuid().ToString("n"));
+    var store = new StateStore(Options.Create(new HeadendOptions { DataDir = dir }), NullLogger<StateStore>.Instance);
+    int channelEvents = 0;
+    int recordingEvents = 0;
+    store.ChannelsChanged += () => channelEvents++;
+    store.RecordingsChanged += () => recordingEvents++;
+    var mux = new MuxDefinition { Name = "PSB1", FrequencyHz = 674_000_000 };
+    store.MergeScan(mux, [new ServiceRecord { Key = "k", MuxKey = mux.Key, Name = "One", Number = 1 }]);
+    store.Decorate("k", s => s.Favourite = true);
+    store.UpdateService("k", s => s.Name = "Renamed");
+    Equal(3, channelEvents, "channel events");
+    True(!store.Decorate("missing", s => s.Favourite = true), "unknown channel");
+    Equal(3, channelEvents, "no event for a change that did not happen");
+    var recording = new RecordingRecord { ServiceKey = "k", Title = "T", StartUtc = DateTime.UtcNow, StopUtc = DateTime.UtcNow.AddHours(1) };
+    store.AddRecording(recording);
+    store.UpdateRecording(recording, r => r.Bytes = 10);
+    store.RemoveRecording(recording.Id);
+    store.RemoveRecording(recording.Id);
+    Equal(3, recordingEvents, "recording events");
+    Directory.Delete(dir, true);
+});
+
 Console.WriteLine("MQTT");
 
 Test("packet encoding matches the MQTT 3.1.1 wire format", () =>

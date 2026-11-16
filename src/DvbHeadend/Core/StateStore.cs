@@ -64,6 +64,12 @@ public sealed class StateStore
         File.Move(temp, _path, overwrite: true);
     }
 
+    /// <summary>Raised after the channel list or any channel's settings change.</summary>
+    public event Action? ChannelsChanged;
+
+    /// <summary>Raised after a recording is added, updated or removed.</summary>
+    public event Action? RecordingsChanged;
+
     // ---- scan bookkeeping ----
 
     public DateTime? LastScanUtc
@@ -128,8 +134,9 @@ public sealed class StateStore
             }
             _state.Services.RemoveAll(s => s.MuxKey == key);
             Save();
-            return true;
         }
+        ChannelsChanged?.Invoke();
+        return true;
     }
 
     // ---- services / channels ----
@@ -172,8 +179,9 @@ public sealed class StateStore
             change(service);
             service.UserEdited = true;
             Save();
-            return true;
         }
+        ChannelsChanged?.Invoke();
+        return true;
     }
 
     /// <summary>Favourite and logo changes; unlike UpdateService these do not pin the name or number.</summary>
@@ -188,8 +196,9 @@ public sealed class StateStore
             }
             change(service);
             Save();
-            return true;
         }
+        ChannelsChanged?.Invoke();
+        return true;
     }
 
     /// <summary>
@@ -230,6 +239,7 @@ public sealed class StateStore
             _state.Services.RemoveAll(s => s.MuxKey == mux.Key && !seen.Contains(s.Key));
             Save();
         }
+        ChannelsChanged?.Invoke();
         return (added, updated);
     }
 
@@ -258,6 +268,7 @@ public sealed class StateStore
             _state.Recordings.Add(recording);
             Save();
         }
+        RecordingsChanged?.Invoke();
     }
 
     public void UpdateRecording(RecordingRecord recording, Action<RecordingRecord> change)
@@ -267,18 +278,24 @@ public sealed class StateStore
             change(recording);
             Save();
         }
+        RecordingsChanged?.Invoke();
     }
 
     public bool RemoveRecording(string id)
     {
+        bool removed;
         lock (_lock)
         {
-            bool removed = _state.Recordings.RemoveAll(r => r.Id == id) > 0;
+            removed = _state.Recordings.RemoveAll(r => r.Id == id) > 0;
             if (removed)
             {
                 Save();
             }
-            return removed;
         }
+        if (removed)
+        {
+            RecordingsChanged?.Invoke();
+        }
+        return removed;
     }
 }

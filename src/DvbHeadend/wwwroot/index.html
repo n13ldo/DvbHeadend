@@ -25,6 +25,10 @@
   nav button { background:none; border:0; color:var(--dim); padding:6px 12px; border-radius:6px; cursor:pointer; font:inherit; }
   nav button.active { background:var(--line); color:var(--text); }
   #summary { margin-left:auto; color:var(--dim); font-size:12px; }
+  #liveState { font-size:12px; color:var(--dim); white-space:nowrap; }
+  #liveState::before { content:''; display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--axis); margin-right:6px; }
+  #liveState.on::before { background:var(--ok); }
+  #liveState.wait::before { background:var(--warn); }
   main { padding:20px; max-width:1200px; margin:0 auto; }
   main.wide { max-width:none; }
   section { display:none; } section.active { display:block; }
@@ -118,6 +122,7 @@
     <button data-tab="setup">Setup</button>
   </nav>
   <div id="summary"></div>
+  <div id="liveState" title="How this page gets its updates"></div>
 </header>
 <main id="main">
   <section id="channels" class="active">
@@ -251,6 +256,7 @@
   </div>
 </dialog>
 
+<script src="/lib/signalr.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -733,11 +739,13 @@ function buildChart(mux, points, value, unit, lo, hi, from, to, width) {
 }
 
 // ---------- setup ----------
-async function renderSetup(status) {
+async function loadMuxes() {
   const muxes = await api('/muxes');
   $('muxRows').innerHTML = muxes.map(m => `<tr>
     <td>${esc(m.name)}</td><td>${(m.frequencyHz / 1e6).toFixed(3)} MHz</td><td>${m.system}</td><td>${m.plpId ?? '–'}</td><td>${m.services}</td>
     <td style="text-align:right"><button class="act" onclick="removeMux('${encodeURIComponent(m.key)}')">Remove</button></td></tr>`).join('');
+}
+function renderSetupStatus(status) {
   const mqtt = status.mqtt;
   const info = $('mqttInfo');
   info.textContent = '';
@@ -775,35 +783,110 @@ $('muxAdd').onclick = async () => {
   } catch (error) { alert(error.message); }
 };
 
-// ---------- refresh loop ----------
-// `full` is set after the user changes something; the 3-second tick passes false so it
-// never rebuilds the grid or the charts under the pointer.
+// ---------- keeping the page current ----------
+// With the live connection up, the server pushes every change and the page fetches nothing on
+// a timer. Without it (script blocked, connection lost) the page falls back to polling.
+let live = false;
+let lastStatus = null;
+let lastListPaint = 0;
+const anyDialog = () => $('guide').open || $('prog').open || $('edit').open;
+const channelsUrl = () => '/channels' + ($('showAll').checked ? '?all=true' : '');
+
+function applyStatus(status) {
+  lastStatus = status;
+  const busy = status.tuners.filter(t => t.mux).length;
+  $('summary').textContent = `${status.channels} channels · ${status.guideEntries} guide entries · ${busy}/${status.tuners.length} tuners in use`;
+  if (tab === 'tuners') { renderTuners(status); }
+  if (tab === 'setup') { renderSetupStatus(status); }
+}
+
+// `full` is set when the user changed something or switched view; the timer passes false.
 async function refresh(full) {
   try {
-    const status = await api('/status');
-    const busy = status.tuners.filter(t => t.mux).length;
-    $('summary').textContent = `${status.channels} channels · ${status.guideEntries} guide entries · ${busy}/${status.tuners.length} tuners in use`;
+    const fetchData = full || !live;
+    if (fetchData || !lastStatus) { applyStatus(await api('/status')); } else { applyStatus(lastStatus); }
     if (tab === 'channels') {
-      const anyDialog = $('guide').open || $('prog').open || $('edit').open;
-      if (view === 'list' && !anyDialog) {
-        channels = await api('/channels' + ($('showAll').checked ? '?all=true' : ''));
-        renderList();
-      } else if (view === 'grid' && (full || Date.now() - gridLoadedAt > 5 * 60000) && !anyDialog) {
-        channels = await api('/channels' + ($('showAll').checked ? '?all=true' : ''));
+      if (view === 'list' && !anyDialog()) {
+        if (fetchData) {
+          channels = await api(channelsUrl());
+          renderList();
+          lastListPaint = Date.now();
+        } else if (Date.now() - lastListPaint > 15000) {
+          renderList(); // moves the progress bars on; no request
+          lastListPaint = Date.now();
+        }
+      } else if (view === 'grid' && (full || Date.now() - gridLoadedAt > 5 * 60000) && !anyDialog()) {
+        channels = await api(channelsUrl());
         await loadGrid(gridLoadedAt === 0);
       } else if (view === 'grid') {
         const line = $('nowline');
         if (line) { line.style.left = `calc(var(--colw) + ${(Date.now() - gridStart) / 60000 * PPM}px)`; }
       }
     }
-    if (tab === 'recordings') { await renderRecordings(); }
-    if (tab === 'tuners') {
-      renderTuners(status);
-      if (full || Date.now() - sigLoadedAt > 60000) { await loadSignal(); }
-    }
-    if (tab === 'setup') { await renderSetup(status); }
+    if (tab === 'recordings' && fetchData) { await renderRecordings(); }
+    if (tab === 'tuners' && (full || Date.now() - sigLoadedAt > 60000)) { await loadSignal(); }
+    if (tab === 'setup' && fetchData) { await loadMuxes(); }
   } catch (error) { $('summary').textContent = 'Offline: ' + error.message; }
 }
+
+function showLive(state) {
+  live = state === 'on';
+  const el = $('liveState');
+  el.className = state;
+  el.textContent = state === 'on' ? 'Live' : state === 'wait' ? 'Reconnecting' : 'Polling';
+}
+
+let gridReloadTimer = 0;
+function scheduleGridReload() {
+  if (gridReloadTimer) { return; }
+  // A guide refresh sends a notice every few seconds; redraw at most every ten.
+  const wait = Math.max(1000, 10000 - (Date.now() - gridLoadedAt));
+  gridReloadTimer = setTimeout(async () => {
+    gridReloadTimer = 0;
+    if (tab === 'channels' && view === 'grid' && !anyDialog()) {
+      try { await loadGrid(false); } catch (error) { /* next notice retries */ }
+    }
+  }, wait);
+}
+
+function startLive() {
+  if (!window.signalR) { showLive('off'); return; }
+  const connection = new signalR.HubConnectionBuilder()
+    .withUrl('/live')
+    .withAutomaticReconnect({ nextRetryDelayInMilliseconds: context => Math.min(30000, 1000 * 2 ** Math.min(context.previousRetryCount, 5)) })
+    .configureLogging(signalR.LogLevel.Warning)
+    .build();
+
+  connection.on('Status', applyStatus);
+  connection.on('NowNext', changes => {
+    for (const change of changes) {
+      const channel = channels.find(c => c.key === change.key);
+      if (channel) {
+        channel.now = change.now ?? null;
+        channel.next = change.next ?? null;
+      }
+    }
+    if (tab === 'channels' && view === 'list' && !anyDialog()) {
+      renderList();
+      lastListPaint = Date.now();
+    }
+  });
+  connection.on('GuideChanged', () => {
+    if (tab === 'channels' && view === 'grid') { scheduleGridReload(); }
+  });
+  connection.on('ChannelsChanged', () => refresh(true));
+  connection.on('RecordingsChanged', () => {
+    if (tab === 'recordings') { renderRecordings().catch(() => {}); }
+  });
+
+  connection.onreconnecting(() => showLive('wait'));
+  connection.onreconnected(() => { showLive('on'); refresh(true); });
+  connection.onclose(() => { showLive('off'); setTimeout(startLive, 10000); });
+  connection.start()
+    .then(() => { showLive('on'); refresh(true); })
+    .catch(() => { showLive('off'); setTimeout(startLive, 10000); });
+}
+
 let resizeTimer = 0;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
@@ -811,7 +894,9 @@ window.addEventListener('resize', () => {
 });
 fillDays();
 applyLayout();
+showLive('off');
 refresh(true);
+startLive();
 setInterval(() => refresh(false), 3000);
 </script>
 </body>

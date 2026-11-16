@@ -16,6 +16,9 @@ public sealed class EpgStore
 
     public long CompressedEventsSkipped { get; private set; }
 
+    /// <summary>Raised (on a mux reader thread) with the channel key whose guide entries changed.</summary>
+    public event Action<string>? ServiceChanged;
+
     public EpgStore(IOptions<HeadendOptions> options, ILogger<EpgStore> log)
     {
         _log = log;
@@ -40,6 +43,7 @@ public sealed class EpgStore
     {
         string key = ServiceRecord.MakeKey(eit.OriginalNetworkId, eit.TransportStreamId, eit.ServiceId);
         var cutoff = DateTime.UtcNow.AddHours(-2);
+        bool changed = false;
         lock (_lock)
         {
             if (!_byService.TryGetValue(key, out var events))
@@ -98,7 +102,12 @@ public sealed class EpgStore
                     Genre = incoming.Genre
                 };
                 _dirty = true;
+                changed = true;
             }
+        }
+        if (changed)
+        {
+            ServiceChanged?.Invoke(key);
         }
     }
 

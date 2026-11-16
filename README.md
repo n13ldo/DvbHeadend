@@ -15,6 +15,7 @@ on the LAN.
   refreshed in the background when a tuner is idle
 - **Recordings** to disk (local or a NAS mount), scheduled from the guide
 - **Home Assistant** over MQTT, with discovery: tuner activity, viewers and signal as sensors
+- **Live updates** pushed over SignalR to the web UI and to any client of your own
 - **Web UI** on port 5004: channels as a list or a timeline grid guide, favourites, your own
   channel logos, recordings, live tuner status and per-mux signal history charts
 
@@ -60,6 +61,32 @@ Restart the service after editing.
 | `SignalSampleSeconds` / `SignalHistoryHours` | 20 / 48 | How often each tuned mux's signal is sampled, and how long the history is kept; 0 seconds turns it off |
 | `AutoScanIntervalDays` / `AutoScanHour` | 7 / 4 | Automatic channel rescan every N days at that local hour, only while no tuner is in use; 0 days turns it off |
 | `RecordingPreRollSeconds` / `PostRollSeconds` | 60 / 180 | Padding around recordings |
+
+### Live updates (SignalR)
+
+The web UI holds a SignalR connection to `/live` and is pushed every change, so it does not
+poll; the header shows **Live** while that connection is up and falls back to polling if it
+drops. Any SignalR client can subscribe to the same feed. Messages from the server:
+
+| Message | Payload | Meaning |
+|---|---|---|
+| `Status` | the object from `GET /api/status` | Tuners, viewers, signal, scan progress; sent when it changes |
+| `NowNext` | `[{ key, now, next }]` | Channels whose current or next programme changed |
+| `GuideChanged` | `[channelKey]` | Guide data changed for these channels (batched every few seconds) |
+| `ChannelsChanged` | none | Scan, rename, favourite, logo or hide: re-read `/api/channels` |
+| `RecordingsChanged` | none | Re-read `/api/recordings` |
+
+From .NET, with the `Microsoft.AspNetCore.SignalR.Client` package:
+
+```csharp
+var live = new HubConnectionBuilder()
+    .WithUrl("http://<pi>:5004/live")
+    .WithAutomaticReconnect()
+    .Build();
+live.On<JsonElement>("Status", status => Console.WriteLine(status.GetProperty("channels")));
+live.On<JsonElement>("NowNext", changes => Console.WriteLine(changes));
+await live.StartAsync();
+```
 
 ### Home Assistant (MQTT)
 
@@ -125,6 +152,9 @@ will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of M
 or FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full text.
 
 ### Third-party data
+
+`src/DvbHeadend/wwwroot/lib/signalr.min.js` is Microsoft's SignalR browser client
+(`@microsoft/signalr` 11.0.0), MIT licensed; its licence text sits beside it.
 
 `src/DvbHeadend/Ts/freesat_huffman.bin` holds the Freeview HD / Freesat Huffman code tables,
 converted by `tools/make_huffman_tables.py` from

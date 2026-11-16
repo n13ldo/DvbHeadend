@@ -14,22 +14,7 @@ public static class ApiEndpoints
     {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/status", (TunerManager tuners, StateStore state, EpgStore epg, Scanner scanner,
-            MqttStatus mqtt, IOptions<HeadendOptions> options) => new
-        {
-            mqtt = new { mqtt.Enabled, mqtt.Connected, mqtt.Broker, mqtt.LastError, mqtt.LastPublishUtc },
-            name = options.Value.FriendlyName,
-            version = typeof(ApiEndpoints).Assembly.GetName().Version?.ToString(3),
-            timeUtc = DateTime.UtcNow,
-            tuners = tuners.GetStatus(),
-            muxes = state.GetMuxes().Count,
-            channels = state.GetChannels().Count,
-            guideEntries = epg.EventCount,
-            guideEntriesUndecodable = epg.CompressedEventsSkipped,
-            scan = scanner.Status,
-            lastScanUtc = state.LastScanUtc,
-            autoScanIntervalDays = options.Value.AutoScanIntervalDays
-        });
+        api.MapGet("/status", (StatusBuilder status) => status.Build(includeTime: true));
 
         // ---- muxes ----
         api.MapGet("/muxes", (StateStore state) => state.GetMuxes().Select(m => new
