@@ -114,11 +114,23 @@ equal-priority request gets HTTP 503.
 `icon-small.svg` is a three-bar version for 16 to 32 pixel uses such as the browser tab.
 The PNG and ICO files beside them are rendered from those two with `rsvg-convert`.
 
-## Third-party data
+## Licence
+
+Copyright (C) 2026 n13ldo
+
+DvbHeadend is free software: you can redistribute it and/or modify it under the terms of the
+GNU General Public License as published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version. It is distributed in the hope that it
+will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+or FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full text.
+
+### Third-party data
 
 `src/DvbHeadend/Ts/freesat_huffman.bin` holds the Freeview HD / Freesat Huffman code tables,
-converted by `tools/make_huffman_tables.py` from tvheadend's `freesat_huffman.c`, which is
-licensed GPL-3.0. Keep that in mind before redistributing this project.
+converted by `tools/make_huffman_tables.py` from
+[Tvheadend](https://github.com/tvheadend/tvheadend)'s `src/epggrab/support/freesat_huffman.c`,
+which is licensed under the GNU General Public License, version 3 or later. That is why this
+project uses the same licence.
 
 ## Building
 
